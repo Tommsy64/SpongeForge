@@ -24,8 +24,10 @@
  */
 package org.spongepowered.mod.mixin.handler;
 
-import net.minecraft.launchwrapper.Launch;
-import net.minecraftforge.common.ForgeVersion;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.spongepowered.asm.mixin.extensibility.IMixinConfig;
@@ -34,9 +36,15 @@ import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
 import org.spongepowered.asm.mixin.transformer.throwables.MixinTargetAlreadyLoadedException;
 import org.spongepowered.asm.util.ConstraintParser.Constraint;
 import org.spongepowered.asm.util.PrettyPrinter;
-import org.spongepowered.asm.util.launchwrapper.LaunchClassLoaderUtil;
 import org.spongepowered.asm.util.throwables.ConstraintViolationException;
 import org.spongepowered.launch.Main;
+
+import com.google.common.collect.ImmutableSet;
+
+import net.minecraft.launchwrapper.Launch;
+import net.minecraft.launchwrapper.LaunchClassLoader;
+import net.minecraftforge.common.ForgeVersion;
+import net.minecraftforge.fml.relauncher.ReflectionHelper;
 
 /**
  * Error handler for Sponge mixins
@@ -104,7 +112,7 @@ public class MixinErrorHandler implements IMixinErrorHandler {
 
         if (ex.getTarget().startsWith("net.minecraftforge")) {
             pp.hr('-').add().add("Loaded forge classes: ").add();
-            for (String loadedClass : LaunchClassLoaderUtil.forClassLoader(Launch.classLoader).getLoadedClasses("net.minecraftforge")) {
+            for (String loadedClass : MixinErrorHandler.getLoadedClasses("net.minecraftforge")) {
                 pp.add("    %s", loadedClass);
             }
         }
@@ -209,5 +217,29 @@ public class MixinErrorHandler implements IMixinErrorHandler {
             return this.badCoreMod((MixinTargetAlreadyLoadedException) th);
         }
         return this.itsAllGoneHorriblyWrong();
+    }
+    
+    /**
+     * Get the names of loaded classes from the cache, filter using the supplied
+     * filter string
+     * 
+     * @param filter filter string or null
+     * @return set of class names
+     */
+    private static Set<String> getLoadedClasses(String filter) {
+        Map<String, Class<?>> cachedClasses = ReflectionHelper.<Map<String, Class<?>>, LaunchClassLoader>getPrivateValue(LaunchClassLoader.class,
+                Launch.classLoader, "cachedClasses");
+        
+        if (cachedClasses == null) {
+            return ImmutableSet.<String>of("Unable to determine classloader state");
+        }
+        
+        Set<String> loadedClasses = new HashSet<String>();
+        for (String className : cachedClasses.keySet()) {
+            if (filter == null || className.startsWith(filter)) {
+                loadedClasses.add(className);
+            }
+        }
+        return loadedClasses;
     }
 }
